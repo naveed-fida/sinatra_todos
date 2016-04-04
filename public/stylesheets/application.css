@@ -159,7 +159,7 @@ form fieldset.actions a:hover {
 
 #lists li {
   position: relative;
-  padding: 18px 25px 18px 57px;
+  padding: 14px 25px 18px 57px;
   margin: 0 0 10px 0;
   border-radius: 8px;
   background: #f6f6f6; 
@@ -198,12 +198,14 @@ form fieldset.actions a:hover {
 
 #lists a {
   display: block;
-  color: inherit; 
+  color: inherit;
+  overflow: hidden; 
 }
 
 #lists h2 {
   display: inline-block;
-  width: 95%; 
+  width: 95%;
+  float: left 
 }
 
 #lists p {
