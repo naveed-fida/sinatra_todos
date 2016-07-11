@@ -6,9 +6,19 @@ require 'tilt/erubis'
 configure do
   enable :sessions
   set :session_secret, 'session'
+  set :erb, :escape_html => true
 end
 
 helpers do
+  def load_list(index)
+    list = session[:lists][index] if index
+    return list if list
+
+    session[:error] = "The specified list was not found."
+    redirect "/lists"
+    halt
+  end
+
   def list_complete?(list)
     todos_count(list) > 0 && todos_remaining_count(list) == 0
   end
@@ -19,6 +29,10 @@ helpers do
 
   def todos_count(list)
     list[:todos].size
+  end
+
+  def todo_class(todo)
+    'complete' if todo[:completed]
   end
 
   def todo_complete?(todo)
@@ -57,6 +71,20 @@ before do
   session[:lists] ||= []
 end
 
+def error_for_list_name(name)
+  if !(1..100).cover? name.size
+    'The name shoud have a length between 1 and 100'
+  elsif session[:lists].any? { |list| list[:name] == name }
+    'The name must be unique'
+  end
+end
+
+def error_for_todo(name)
+  if !(1..100).cover? name.size
+    'The name shoud have a length between 1 and 100'
+  end
+end
+
 get '/' do
   redirect '/lists'
 end
@@ -72,19 +100,6 @@ get '/lists/new' do
   erb :new_list, layout: :layout
 end
 
-def error_for_list_name(name)
-  if !(1..100).cover? name.size
-    'The name shoud have a length between 1 and 100'
-  elsif session[:lists].any? { |list| list[:name] == name }
-    'The name must be unique'
-  end
-end
-
-def error_for_todo(name)
-  if !(1..100).cover? name.size
-    'The name shoud have a length between 1 and 100'
-  end
-end
 # create a new list
 post '/lists' do
   list_name = params[:list_name].strip
@@ -102,7 +117,7 @@ end
 
 get '/lists/:id' do |id|
   @list_id = id.to_i
-  @list = session[:lists][@list_id]
+  @list = load_list(@list_id)
 
   erb :list, layout: :layout
 end
@@ -110,7 +125,7 @@ end
 # edit an existing todo list
 get '/lists/:id/edit' do |id|
   @list_id = id.to_i
-  @list = session[:lists][@list_id]
+  @list = load_list(@list_id)
   erb :edit_list, layout: :layout
 end
 
@@ -119,7 +134,7 @@ post '/lists/:id' do |id|
   list_name = params[:list_name].strip
   @list_id = id.to_i
   error = error_for_list_name(list_name)
-  @list = session[:lists][@list_id]
+  @list = load_list(@list_id)
 
   if error =~ /length/ 
     session[:error] = error
@@ -134,14 +149,19 @@ end
 # delete a todo list
 post '/lists/:id/delete' do |id|
   session[:lists].delete_at(id.to_i)
-  session[:success] = 'The list has been deleted.'
-  redirect '/lists'
+  
+  if env["HTTP_X_REQUESTED_WITH"] == "XMLHttpRequest"
+    "/lists"
+  else
+    session[:success] = 'The list has been deleted.'
+    redirect '/lists'
+  end
 end
 
 # mark all todo items in a list as complete
 post '/lists/:id/complete_all' do |list_id|
   @list_id = list_id.to_i
-  @list = session[:lists][@list_id]
+  @list = load_list(@list_id)
   @list[:todos].each { |todo| todo[:completed] = true }
 
   session[:success] = "All todos have been completed"
@@ -151,7 +171,7 @@ end
 # Add a new todo item to a todo list
 post '/lists/:list_id/todos' do |list_id|
   @list_id = list_id.to_i
-  @list = session[:lists][@list_id]
+  @list = load_list(@list_id)
   text = params[:todo].strip
   error = error_for_todo(text)
 
@@ -167,16 +187,21 @@ end
 
 #delete a todo item
 post '/lists/:list_id/todos/:todo_id/delete' do |list_id, todo_id|
-  list = session[:lists][list_id.to_i]
+  list = load_list(list_id.to_i)
   list[:todos].delete_at(todo_id.to_i)
 
-  session[:success] = 'The todo item has been deleted'
-  redirect "lists/#{list_id}"
+  if env["HTTP_X_REQUESTED_WITH"] == "XMLHttpRequest"
+    status 204
+  else
+    session[:success] = 'The todo item has been deleted'
+    redirect "lists/#{list_id}"
+  end
 end
 
 # update the status of a todo item
 post '/lists/:list_id/todos/:todo_id' do |list_id, todo_id|
-  todo = session[:lists][list_id.to_i][:todos][todo_id.to_i]
+  list = load_list(list_id.to_i)
+  todo = list[:todos][todo_id.to_i]
   is_completed = params[:completed] == 'true'
   todo[:completed] = is_completed    
 
